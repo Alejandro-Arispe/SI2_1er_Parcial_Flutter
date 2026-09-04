@@ -34,6 +34,10 @@ class CatalogApiDataSource implements CatalogDataSource {
     required int page,
     required int pageSize,
     String? categoryId,
+    String query = '',
+    bool onlyAvailable = false,
+    double? minPrice,
+    double? maxPrice,
   }) async {
     final response = await _dio.get<List<dynamic>>(
       ApiEndpoints.products,
@@ -41,6 +45,10 @@ class CatalogApiDataSource implements CatalogDataSource {
         'page': page,
         'page_size': pageSize,
         'category_id': ?categoryId,
+        if (query.trim().isNotEmpty) 'q': query.trim(),
+        if (onlyAvailable) 'only_available': true,
+        'min_price': ?minPrice,
+        'max_price': ?maxPrice,
       },
     );
     return response.data!

@@ -3,9 +3,11 @@ import 'package:fashion_store/features/catalog/domain/entities/category.dart';
 import 'package:fashion_store/features/catalog/domain/entities/product.dart';
 
 /// Contrato del catálogo: categorías, productos destacados (Home) y
-/// listado paginado con filtro por categoría (Catálogo, Fase 7). La
-/// búsqueda por texto y los filtros avanzados (talla, color, precio,
-/// temporada) se agregan en la Fase 8.
+/// listado paginado con búsqueda por texto y filtros (categoría,
+/// disponibilidad, rango de precio; ver Fase 8). Los filtros de talla,
+/// color y temporada se agregan cuando exista el modelo de variantes
+/// (Fase 10): no tiene sentido filtrar por un dato que el producto
+/// todavía no tiene.
 abstract class CatalogRepository {
   Future<Result<List<Category>>> getCategories();
 
@@ -15,5 +17,9 @@ abstract class CatalogRepository {
     required int page,
     required int pageSize,
     String? categoryId,
+    String query = '',
+    bool onlyAvailable = false,
+    double? minPrice,
+    double? maxPrice,
   });
 }

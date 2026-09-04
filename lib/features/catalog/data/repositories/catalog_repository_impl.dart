@@ -39,10 +39,22 @@ class CatalogRepositoryImpl implements CatalogRepository {
     required int page,
     required int pageSize,
     String? categoryId,
+    String query = '',
+    bool onlyAvailable = false,
+    double? minPrice,
+    double? maxPrice,
   }) async {
     try {
       return Success(
-        await _dataSource.getProducts(page: page, pageSize: pageSize, categoryId: categoryId),
+        await _dataSource.getProducts(
+          page: page,
+          pageSize: pageSize,
+          categoryId: categoryId,
+          query: query,
+          onlyAvailable: onlyAvailable,
+          minPrice: minPrice,
+          maxPrice: maxPrice,
+        ),
       );
     } on AppException catch (e) {
       return ResultError(ErrorMapper.map(e));

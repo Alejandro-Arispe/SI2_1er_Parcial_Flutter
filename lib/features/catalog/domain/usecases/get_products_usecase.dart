@@ -4,9 +4,8 @@ import 'package:fashion_store/features/catalog/data/repositories/catalog_reposit
 import 'package:fashion_store/features/catalog/domain/entities/product.dart';
 import 'package:fashion_store/features/catalog/domain/repositories/catalog_repository.dart';
 
-/// Caso de uso: listado paginado del catálogo, opcionalmente filtrado
-/// por categoría. La búsqueda por texto y los filtros avanzados llegan
-/// en la Fase 8.
+/// Caso de uso: listado paginado del catálogo con búsqueda por texto y
+/// filtros (categoría, disponibilidad, rango de precio).
 class GetProductsUseCase {
   final CatalogRepository _repository;
 
@@ -16,8 +15,20 @@ class GetProductsUseCase {
     required int page,
     required int pageSize,
     String? categoryId,
+    String query = '',
+    bool onlyAvailable = false,
+    double? minPrice,
+    double? maxPrice,
   }) {
-    return _repository.getProducts(page: page, pageSize: pageSize, categoryId: categoryId);
+    return _repository.getProducts(
+      page: page,
+      pageSize: pageSize,
+      categoryId: categoryId,
+      query: query,
+      onlyAvailable: onlyAvailable,
+      minPrice: minPrice,
+      maxPrice: maxPrice,
+    );
   }
 }
 

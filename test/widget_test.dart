@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -134,6 +135,15 @@ void main() {
 
         expect(find.text('Todas'), findsOneWidget);
         expect(find.text('Vestido Floral'), findsWidgets);
+
+        // Fase 8: la búsqueda por texto filtra el listado. Se escribe en
+        // el campo de búsqueda y se espera el debounce (400ms) más la
+        // latencia simulada del mock (500ms) antes de revisar el filtro.
+        await tester.enterText(find.byType(TextField), 'Zapatillas');
+        await tester.pump(const Duration(milliseconds: 900));
+
+        expect(find.text('Zapatillas Urbanas'), findsWidgets);
+        expect(find.text('Vestido Floral'), findsNothing);
       },
       createHttpClient: (context) => _FakeHttpClient(),
     );

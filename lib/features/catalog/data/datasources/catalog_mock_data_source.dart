@@ -72,12 +72,25 @@ class CatalogMockDataSource implements CatalogDataSource {
     required int page,
     required int pageSize,
     String? categoryId,
+    String query = '',
+    bool onlyAvailable = false,
+    double? minPrice,
+    double? maxPrice,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 500));
 
-    final filtered = categoryId == null
-        ? _allProducts
-        : _allProducts.where((product) => product.categoryId == categoryId).toList();
+    final normalizedQuery = query.trim().toLowerCase();
+
+    final filtered = _allProducts.where((product) {
+      if (categoryId != null && product.categoryId != categoryId) return false;
+      if (normalizedQuery.isNotEmpty && !product.name.toLowerCase().contains(normalizedQuery)) {
+        return false;
+      }
+      if (onlyAvailable && !product.isAvailable) return false;
+      if (minPrice != null && product.basePrice < minPrice) return false;
+      if (maxPrice != null && product.basePrice > maxPrice) return false;
+      return true;
+    }).toList();
 
     final start = (page - 1) * pageSize;
     if (start >= filtered.length) return [];
