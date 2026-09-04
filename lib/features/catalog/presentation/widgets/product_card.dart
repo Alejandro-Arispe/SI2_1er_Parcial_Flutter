@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:fashion_store/core/theme/app_colors.dart';
 import 'package:fashion_store/core/theme/app_spacing.dart';
 import 'package:fashion_store/features/catalog/domain/entities/product.dart';
+import 'package:fashion_store/features/favorites/presentation/widgets/favorite_button.dart';
 
 /// Tarjeta de producto reutilizable: imagen grande, nombre y precio,
 /// siguiendo la prioridad de "imágenes grandes de producto" de la
@@ -52,6 +53,11 @@ class ProductCard extends StatelessWidget {
                         top: AppSpacing.sm,
                         child: _AvailabilityBadge(),
                       ),
+                    Positioned(
+                      right: AppSpacing.sm,
+                      top: AppSpacing.sm,
+                      child: FavoriteButton(product: product),
+                    ),
                   ],
                 ),
               ),

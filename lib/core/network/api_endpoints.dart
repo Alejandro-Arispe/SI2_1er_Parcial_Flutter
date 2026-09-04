@@ -19,4 +19,14 @@ class ApiEndpoints {
   // featured=true) en lugar de rutas separadas por caso de uso.
   static const String products = '/products';
   static const String categories = '/categories';
+
+  static String productDetail(String productId) => '$products/$productId';
+
+  static String variantAvailability(String variantId) => '/variants/$variantId/availability';
+
+  // Favoritos. GET lista los del cliente autenticado; POST/DELETE
+  // marcan y quitan un producto puntual.
+  static const String favorites = '/favorites';
+
+  static String favorite(String productId) => '$favorites/$productId';
 }

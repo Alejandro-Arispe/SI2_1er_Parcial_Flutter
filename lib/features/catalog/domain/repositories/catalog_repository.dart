@@ -1,6 +1,8 @@
 import 'package:fashion_store/core/utils/result.dart';
+import 'package:fashion_store/features/catalog/domain/entities/branch_stock.dart';
 import 'package:fashion_store/features/catalog/domain/entities/category.dart';
 import 'package:fashion_store/features/catalog/domain/entities/product.dart';
+import 'package:fashion_store/features/catalog/domain/entities/product_detail.dart';
 
 /// Contrato del catálogo: categorías, productos destacados (Home) y
 /// listado paginado con búsqueda por texto y filtros (categoría,
@@ -22,4 +24,8 @@ abstract class CatalogRepository {
     double? minPrice,
     double? maxPrice,
   });
+
+  Future<Result<ProductDetail>> getProductDetail(String productId);
+
+  Future<Result<List<BranchStock>>> getVariantAvailability(String variantId);
 }

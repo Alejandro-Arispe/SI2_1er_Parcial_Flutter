@@ -9,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fashion_store/app/app.dart';
 import 'package:fashion_store/core/security/secure_storage_service.dart';
+import 'package:fashion_store/shared/session/authenticated_user.dart';
+import 'package:fashion_store/shared/session/session_controller.dart';
 
 /// Fake de almacenamiento seguro para pruebas de widgets.
 ///
@@ -126,6 +128,52 @@ void main() {
 
         expect(find.text('Destacados'), findsOneWidget);
 
+        // Fase 12: favoritos. Sin sesión, tocar el corazón debe llevar
+        // a login en lugar de guardar el favorito (ver sección 21).
+        final favoriteButtonFinder = find.byIcon(Icons.favorite_border).first;
+        await tester.tap(favoriteButtonFinder);
+        await tester.pump();
+
+        expect(find.widgetWithText(AppBar, 'Iniciar sesión'), findsOneWidget);
+
+        // El formulario de login ya se probó en la Fase 5; aquí solo
+        // interesa tener una sesión activa para seguir probando
+        // favoritos, así que se autentica directamente a través del
+        // contenedor de providers en lugar de rellenar el formulario.
+        final container = ProviderScope.containerOf(tester.element(find.byType(Scaffold).first));
+        container.read(sessionControllerProvider.notifier).markAuthenticated(
+              const AuthenticatedUser(id: 'test-user', name: 'Maria', email: 'maria@example.com'),
+            );
+        await tester.pump();
+        await tester.pump();
+
+        // Al quedar autenticada mientras está en /login, el router
+        // redirige automáticamente a Home.
+        expect(find.text('Destacados'), findsOneWidget);
+
+        // Ahora con sesión, marcar como favorito sí debe funcionar
+        // (actualización optimista: el ícono cambia sin esperar red).
+        await tester.tap(find.byIcon(Icons.favorite_border).first);
+        await tester.pump();
+
+        expect(find.byIcon(Icons.favorite), findsWidgets);
+
+        // Se espera la llamada real de guardado (~300ms) para no dejar
+        // timers pendientes al terminar el test.
+        await tester.pump(const Duration(milliseconds: 400));
+
+        // El producto marcado debe aparecer en la pestaña Favoritos.
+        await tester.tap(find.text('Favoritos').first);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 600));
+
+        expect(find.text('Vestido Floral'), findsWidgets);
+
+        // Vuelve a Home para continuar con el resto del recorrido
+        // (catálogo, búsqueda, detalle) igual que antes de la Fase 12.
+        await tester.tap(find.text('Home').first);
+        await tester.pump();
+
         // Navega a la pestaña Catálogo (Fase 7) y espera su carga inicial
         // (categorías + primera página de productos, cada una con la
         // misma latencia simulada que Home).
@@ -144,6 +192,57 @@ void main() {
 
         expect(find.text('Zapatillas Urbanas'), findsWidgets);
         expect(find.text('Vestido Floral'), findsNothing);
+
+        // Fase 9: tocar el producto abre el detalle con su descripción.
+        final productFinder = find.text('Zapatillas Urbanas').first;
+        await tester.ensureVisible(productFinder);
+        await tester.pump();
+        await tester.tap(productFinder);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 600));
+
+        // La galería de imágenes a ancho completo es más alta que el
+        // viewport del test, así que hay que desplazarse para que la
+        // descripción quede dentro del árbol de widgets construido.
+        await tester.drag(find.byType(ListView).first, const Offset(0, -600));
+        await tester.pump();
+
+        expect(find.text('Descripción'), findsOneWidget);
+        expect(find.textContaining('Zapatillas Urbanas es una prenda'), findsOneWidget);
+
+        // Fase 10: seleccionar talla y color revela la disponibilidad
+        // de esa variante concreta (antes solo se muestra un mensaje
+        // pidiendo elegir ambas).
+        expect(find.text('Selecciona talla y color para ver disponibilidad.'), findsOneWidget);
+
+        final sizeChipFinder = find.widgetWithText(ChoiceChip, 'S');
+        await tester.ensureVisible(sizeChipFinder);
+        await tester.pump();
+        await tester.tap(sizeChipFinder);
+        await tester.pump();
+
+        const colorNames = ['Negro', 'Blanco', 'Rojo', 'Azul', 'Beige', 'Verde'];
+        final colorSwatchFinder = find.byWidgetPredicate(
+          (widget) => widget is Tooltip && colorNames.contains(widget.message),
+        );
+        await tester.ensureVisible(colorSwatchFinder.first);
+        await tester.pump();
+        await tester.tap(colorSwatchFinder.first);
+        await tester.pump();
+
+        expect(find.text('Selecciona talla y color para ver disponibilidad.'), findsNothing);
+
+        // Fase 11: con una variante concreta elegida, se consulta la
+        // disponibilidad por sucursal (mock con ~500ms de latencia).
+        await tester.pump(const Duration(milliseconds: 600));
+
+        final branchSectionFinder = find.text('Disponibilidad por sucursal');
+        await tester.ensureVisible(branchSectionFinder);
+        await tester.pump();
+
+        expect(branchSectionFinder, findsOneWidget);
+        expect(find.text('FashionStore San Miguel'), findsOneWidget);
+        expect(find.text('La Paz'), findsOneWidget);
       },
       createHttpClient: (context) => _FakeHttpClient(),
     );

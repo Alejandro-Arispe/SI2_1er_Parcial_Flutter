@@ -1,4 +1,6 @@
+import 'package:fashion_store/features/catalog/data/models/branch_stock_model.dart';
 import 'package:fashion_store/features/catalog/data/models/category_model.dart';
+import 'package:fashion_store/features/catalog/data/models/product_detail_model.dart';
 import 'package:fashion_store/features/catalog/data/models/product_model.dart';
 
 /// Contrato común para las fuentes de datos del catálogo. Dos
@@ -26,4 +28,14 @@ abstract class CatalogDataSource {
     double? minPrice,
     double? maxPrice,
   });
+
+  /// Detalle completo de un producto (descripción, galería). Lanza
+  /// ServerException si no existe un producto con ese id.
+  Future<ProductDetailModel> getProductDetail(String productId);
+
+  /// Disponibilidad de una variante concreta (talla + color) por
+  /// sucursal (ver sección 8 del documento). Se consulta recién cuando
+  /// el cliente eligió ambas, porque antes de eso no hay una variante
+  /// concreta sobre la cual consultar stock.
+  Future<List<BranchStockModel>> getVariantAvailability(String variantId);
 }

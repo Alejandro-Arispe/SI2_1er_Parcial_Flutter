@@ -1,7 +1,8 @@
 /// Producto del catálogo, en su forma resumida para listados (Home,
-/// catálogo, favoritos). No incluye variantes de talla/color: eso se
-/// agrega en la Fase 10 (ProductVariant), cuando se implemente el
-/// detalle de producto.
+/// catálogo, favoritos). El detalle completo (descripción, galería de
+/// imágenes) se modela por separado en ProductDetail (Fase 9). No
+/// incluye variantes de talla/color: eso se agrega en la Fase 10
+/// (ProductVariant).
 class Product {
   final String id;
   final String name;

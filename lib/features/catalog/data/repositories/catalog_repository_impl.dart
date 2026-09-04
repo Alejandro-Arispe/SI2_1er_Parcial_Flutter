@@ -7,8 +7,10 @@ import 'package:fashion_store/core/utils/result.dart';
 import 'package:fashion_store/features/catalog/data/datasources/catalog_api_data_source.dart';
 import 'package:fashion_store/features/catalog/data/datasources/catalog_data_source.dart';
 import 'package:fashion_store/features/catalog/data/datasources/catalog_mock_data_source.dart';
+import 'package:fashion_store/features/catalog/domain/entities/branch_stock.dart';
 import 'package:fashion_store/features/catalog/domain/entities/category.dart';
 import 'package:fashion_store/features/catalog/domain/entities/product.dart';
+import 'package:fashion_store/features/catalog/domain/entities/product_detail.dart';
 import 'package:fashion_store/features/catalog/domain/repositories/catalog_repository.dart';
 
 class CatalogRepositoryImpl implements CatalogRepository {
@@ -56,6 +58,24 @@ class CatalogRepositoryImpl implements CatalogRepository {
           maxPrice: maxPrice,
         ),
       );
+    } on AppException catch (e) {
+      return ResultError(ErrorMapper.map(e));
+    }
+  }
+
+  @override
+  Future<Result<ProductDetail>> getProductDetail(String productId) async {
+    try {
+      return Success(await _dataSource.getProductDetail(productId));
+    } on AppException catch (e) {
+      return ResultError(ErrorMapper.map(e));
+    }
+  }
+
+  @override
+  Future<Result<List<BranchStock>>> getVariantAvailability(String variantId) async {
+    try {
+      return Success(await _dataSource.getVariantAvailability(variantId));
     } on AppException catch (e) {
       return ResultError(ErrorMapper.map(e));
     }
