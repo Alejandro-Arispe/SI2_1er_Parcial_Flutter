@@ -1,10 +1,14 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import 'package:fashion_store/app/router/route_paths.dart';
 import 'package:fashion_store/core/error/failures.dart';
 import 'package:fashion_store/core/theme/app_colors.dart';
 import 'package:fashion_store/core/theme/app_spacing.dart';
+import 'package:fashion_store/core/utils/result.dart';
+import 'package:fashion_store/core/widgets/app_button.dart';
 import 'package:fashion_store/core/widgets/error_state.dart';
 import 'package:fashion_store/core/widgets/loading_indicator.dart';
 import 'package:fashion_store/features/catalog/domain/entities/branch_stock.dart';
@@ -13,9 +17,15 @@ import 'package:fashion_store/features/catalog/domain/entities/product_color.dar
 import 'package:fashion_store/features/catalog/domain/entities/product_detail.dart';
 import 'package:fashion_store/features/catalog/domain/entities/product_size.dart';
 import 'package:fashion_store/features/catalog/domain/entities/product_variant.dart';
+import 'package:fashion_store/features/cart/presentation/controllers/cart_controller.dart';
+import 'package:fashion_store/features/cart/presentation/widgets/cart_icon_button.dart';
 import 'package:fashion_store/features/favorites/presentation/widgets/favorite_button.dart';
 import 'package:fashion_store/features/product/presentation/controllers/product_detail_provider.dart';
 import 'package:fashion_store/features/product/presentation/controllers/variant_availability_provider.dart';
+import 'package:fashion_store/features/reservations/presentation/controllers/reservation_draft_controller.dart';
+import 'package:fashion_store/features/reservations/presentation/widgets/reservation_icon_button.dart';
+import 'package:fashion_store/shared/session/session_controller.dart';
+import 'package:fashion_store/shared/session/session_state.dart';
 
 /// Detalle de producto: galería de imágenes, precio, descripción y
 /// selector de variante (talla + color, ver sección 7 del documento).
@@ -41,10 +51,20 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
   Widget build(BuildContext context) {
     final detailAsync = ref.watch(productDetailProvider(widget.productId));
 
+    final selectedVariant = detailAsync.value == null
+        ? null
+        : _findVariant(
+            detailAsync.value!.variants,
+            _selectedSizeId,
+            _selectedColorId,
+          );
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Detalle del producto'),
         actions: [
+          const CartIconButton(),
+          const ReservationIconButton(),
           if (detailAsync.value case final detail?)
             Padding(
               padding: const EdgeInsets.only(right: AppSpacing.md),
@@ -55,15 +75,123 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
       body: detailAsync.when(
         loading: () => const LoadingIndicator(),
         error: (error, stackTrace) => ErrorStateView(
-          message: error is Failure ? error.message : 'No se pudo cargar el producto.',
-          onRetry: () => ref.invalidate(productDetailProvider(widget.productId)),
+          message: error is Failure
+              ? error.message
+              : 'No se pudo cargar el producto.',
+          onRetry: () =>
+              ref.invalidate(productDetailProvider(widget.productId)),
         ),
         data: (detail) => _ProductDetailContent(
           detail: detail,
           selectedSizeId: _selectedSizeId,
           selectedColorId: _selectedColorId,
           onSizeSelected: (sizeId) => setState(() => _selectedSizeId = sizeId),
-          onColorSelected: (colorId) => setState(() => _selectedColorId = colorId),
+          onColorSelected: (colorId) =>
+              setState(() => _selectedColorId = colorId),
+        ),
+      ),
+      bottomNavigationBar: detailAsync.value == null
+          ? null
+          : _AddToCartBar(detail: detailAsync.value!, variant: selectedVariant),
+    );
+  }
+}
+
+/// Barra fija con el botón de agregar al carrito y el de agregar a la
+/// reserva. Ambos se habilitan solo con una variante concreta elegida y
+/// disponible (ver sección 7: nunca se compra ni reserva el producto
+/// genérico, siempre la variante talla+color).
+class _AddToCartBar extends ConsumerWidget {
+  final ProductDetail detail;
+  final ProductVariant? variant;
+
+  const _AddToCartBar({required this.detail, required this.variant});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canAdd = variant != null && variant!.isAvailable;
+
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppButton(
+                label: 'Agregar al carrito',
+                icon: Icons.shopping_bag_outlined,
+                onPressed: canAdd
+                    ? () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        final result = await ref
+                            .read(cartControllerProvider.notifier)
+                            .addToCart(
+                              variant: variant!,
+                              productId: detail.id,
+                              productName: detail.name,
+                              imageUrl: detail.imageUrls.first,
+                              unitPrice: detail.basePrice,
+                            );
+                        // Se limpia cualquier confirmación anterior (por
+                        // ejemplo, una reserva) para que no quede en cola:
+                        // el mensaje relevante ahora es este.
+                        messenger
+                          ..removeCurrentSnackBar()
+                          ..showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                result is Success
+                                    ? 'Se agregó ${detail.name} al carrito.'
+                                    : 'No se pudo agregar al carrito. Intenta de nuevo.',
+                              ),
+                            ),
+                          );
+                      }
+                    : null,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              AppButton(
+                label: 'Agregar a la reserva',
+                icon: Icons.event_available_outlined,
+                variant: AppButtonVariant.secondary,
+                onPressed: canAdd
+                    ? () {
+                        final session = ref.read(sessionControllerProvider);
+                        if (session is! SessionAuthenticated) {
+                          // Mismo motivo que FavoriteButton: go() en lugar
+                          // de push() para que iniciar sesión desde aquí
+                          // no deje a la clienta atascada en login.
+                          context.go(RoutePaths.login);
+                          return;
+                        }
+
+                        ref
+                            .read(reservationDraftControllerProvider.notifier)
+                            .addItem(
+                              variant: variant!,
+                              productId: detail.id,
+                              productName: detail.name,
+                              imageUrl: detail.imageUrls.first,
+                            );
+                        ScaffoldMessenger.of(context)
+                          ..removeCurrentSnackBar()
+                          ..showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Se agregó ${detail.name} a tu reserva.',
+                              ),
+                            ),
+                          );
+                      }
+                    : null,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -89,7 +217,11 @@ class _ProductDetailContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final sizes = _distinctSizes(detail.variants);
     final colors = _distinctColors(detail.variants);
-    final selectedVariant = _findVariant(detail.variants, selectedSizeId, selectedColorId);
+    final selectedVariant = _findVariant(
+      detail.variants,
+      selectedSizeId,
+      selectedColorId,
+    );
 
     return ListView(
       children: [
@@ -104,7 +236,10 @@ class _ProductDetailContent extends StatelessWidget {
                 style: Theme.of(context).textTheme.labelMedium,
               ),
               const SizedBox(height: AppSpacing.xs),
-              Text(detail.name, style: Theme.of(context).textTheme.displayMedium),
+              Text(
+                detail.name,
+                style: Theme.of(context).textTheme.displayMedium,
+              ),
               const SizedBox(height: AppSpacing.sm),
               Text(
                 'Bs ${detail.basePrice.toStringAsFixed(0)}',
@@ -149,14 +284,20 @@ class _ProductDetailContent extends StatelessWidget {
               ),
               if (selectedVariant != null) ...[
                 const SizedBox(height: AppSpacing.md),
-                _BranchAvailabilitySection(variantId: selectedVariant.id),
+                _BranchAvailabilitySection(variant: selectedVariant),
               ],
               const SizedBox(height: AppSpacing.lg),
               const Divider(),
               const SizedBox(height: AppSpacing.lg),
-              Text('Descripción', style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                'Descripción',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
               const SizedBox(height: AppSpacing.sm),
-              Text(detail.description, style: Theme.of(context).textTheme.bodyLarge),
+              Text(
+                detail.description,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
               const SizedBox(height: AppSpacing.xl),
             ],
           ),
@@ -173,14 +314,18 @@ class _VariantAvailability extends StatelessWidget {
   final bool hasSelection;
   final ProductVariant? variant;
 
-  const _VariantAvailability({required this.hasSelection, required this.variant});
+  const _VariantAvailability({
+    required this.hasSelection,
+    required this.variant,
+  });
 
   @override
   Widget build(BuildContext context) {
     if (!hasSelection) {
       return Text(
         'Selecciona talla y color para ver disponibilidad.',
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+        style: Theme.of(context).textTheme.bodyMedium
+            ?.copyWith(color: AppColors.textSecondary),
       );
     }
 
@@ -194,10 +339,12 @@ class _VariantAvailability extends StatelessWidget {
         ),
         const SizedBox(width: AppSpacing.xs),
         Text(
-          isAvailable ? 'Disponible en esta talla y color.' : 'Agotado en esta combinación.',
+          isAvailable
+              ? 'Disponible en esta talla y color.'
+              : 'Agotado en esta combinación.',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: isAvailable ? AppColors.success : AppColors.error,
-              ),
+            color: isAvailable ? AppColors.success : AppColors.error,
+          ),
         ),
       ],
     );
@@ -209,13 +356,15 @@ class _VariantAvailability extends StatelessWidget {
 /// disponible una prenda). Se consulta recién cuando hay una variante
 /// concreta seleccionada, no antes.
 class _BranchAvailabilitySection extends ConsumerWidget {
-  final String variantId;
+  final ProductVariant variant;
 
-  const _BranchAvailabilitySection({required this.variantId});
+  const _BranchAvailabilitySection({required this.variant});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final availabilityAsync = ref.watch(variantAvailabilityProvider(variantId));
+    final availabilityAsync = ref.watch(
+      variantAvailabilityProvider(variant.id),
+    );
 
     return availabilityAsync.when(
       loading: () => const Padding(
@@ -230,22 +379,33 @@ class _BranchAvailabilitySection extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
         child: Text(
           'No se pudo consultar la disponibilidad por sucursal.',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: AppColors.textSecondary),
         ),
       ),
       data: (branchStocks) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: AppSpacing.md),
-          Text('Disponibilidad por sucursal', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'Disponibilidad por sucursal',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: AppSpacing.sm),
-          ...branchStocks.map((branchStock) => _BranchStockTile(branchStock: branchStock)),
+          ...branchStocks.map(
+            (branchStock) => _BranchStockTile(branchStock: branchStock),
+          ),
         ],
       ),
     );
   }
 }
 
+/// Fila de sucursal con su disponibilidad (ver sección 8: el cliente
+/// debe poder saber dónde está disponible una prenda). Elegir la
+/// sucursal para reservar ocurre al confirmar la reserva completa
+/// (ReservationCartPage), no acá: una reserva puede incluir varias
+/// prendas y solo admite una sucursal única para todas (sección 10).
 class _BranchStockTile extends StatelessWidget {
   final BranchStock branchStock;
 
@@ -258,28 +418,40 @@ class _BranchStockTile extends StatelessWidget {
       child: Row(
         children: [
           Icon(
-            branchStock.isAvailable ? Icons.storefront : Icons.storefront_outlined,
+            branchStock.isAvailable
+                ? Icons.storefront
+                : Icons.storefront_outlined,
             size: 18,
-            color: branchStock.isAvailable ? AppColors.textPrimary : AppColors.disabled,
+            color: branchStock.isAvailable
+                ? AppColors.textPrimary
+                : AppColors.disabled,
           ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(branchStock.branch.name, style: Theme.of(context).textTheme.bodyMedium),
+                Text(
+                  branchStock.branch.name,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
                 Text(
                   branchStock.branch.city,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
+                  style: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(color: AppColors.textSecondary),
                 ),
               ],
             ),
           ),
           Text(
-            branchStock.isAvailable ? '${branchStock.stock} disponibles' : 'Sin stock',
+            branchStock.isAvailable
+                ? '${branchStock.stock} disponibles'
+                : 'Sin stock',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: branchStock.isAvailable ? AppColors.success : AppColors.error,
-                ),
+              color: branchStock.isAvailable
+                  ? AppColors.success
+                  : AppColors.error,
+            ),
           ),
         ],
       ),
@@ -292,7 +464,11 @@ class _ColorSwatch extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
-  const _ColorSwatch({required this.color, required this.selected, required this.onTap});
+  const _ColorSwatch({
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -358,10 +534,16 @@ List<ProductColor> _distinctColors(List<ProductVariant> variants) {
   return result;
 }
 
-ProductVariant? _findVariant(List<ProductVariant> variants, String? sizeId, String? colorId) {
+ProductVariant? _findVariant(
+  List<ProductVariant> variants,
+  String? sizeId,
+  String? colorId,
+) {
   if (sizeId == null || colorId == null) return null;
   for (final variant in variants) {
-    if (variant.size.id == sizeId && variant.color.id == colorId) return variant;
+    if (variant.size.id == sizeId && variant.color.id == colorId) {
+      return variant;
+    }
   }
   return null;
 }
@@ -408,10 +590,14 @@ class _ImageGalleryState extends State<_ImageGallery> {
             itemBuilder: (context, index) => CachedNetworkImage(
               imageUrl: widget.imageUrls[index],
               fit: BoxFit.cover,
-              placeholder: (context, url) => const ColoredBox(color: AppColors.skeleton),
+              placeholder: (context, url) =>
+                  const ColoredBox(color: AppColors.skeleton),
               errorWidget: (context, url, error) => const ColoredBox(
                 color: AppColors.skeleton,
-                child: Icon(Icons.image_not_supported_outlined, color: AppColors.disabled),
+                child: Icon(
+                  Icons.image_not_supported_outlined,
+                  color: AppColors.disabled,
+                ),
               ),
             ),
           ),
@@ -429,7 +615,9 @@ class _ImageGalleryState extends State<_ImageGallery> {
                     height: 7,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: index == _currentIndex ? AppColors.primary : AppColors.background,
+                      color: index == _currentIndex
+                          ? AppColors.primary
+                          : AppColors.background,
                     ),
                   );
                 }),

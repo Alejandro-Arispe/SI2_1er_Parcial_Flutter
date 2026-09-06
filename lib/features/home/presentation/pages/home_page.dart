@@ -10,9 +10,11 @@ import 'package:fashion_store/core/widgets/error_state.dart';
 import 'package:fashion_store/core/widgets/loading_indicator.dart';
 import 'package:fashion_store/features/catalog/domain/entities/category.dart';
 import 'package:fashion_store/features/catalog/domain/entities/product.dart';
+import 'package:fashion_store/features/cart/presentation/widgets/cart_icon_button.dart';
 import 'package:fashion_store/features/catalog/presentation/controllers/catalog_controller.dart';
 import 'package:fashion_store/features/catalog/presentation/widgets/product_card.dart';
 import 'package:fashion_store/features/home/presentation/controllers/home_controller.dart';
+import 'package:fashion_store/features/reservations/presentation/widgets/reservation_icon_button.dart';
 import 'package:fashion_store/shared/session/session_controller.dart';
 import 'package:fashion_store/shared/session/session_state.dart';
 
@@ -30,6 +32,11 @@ class HomePage extends ConsumerWidget {
     final userName = session is SessionAuthenticated ? session.user.name : null;
 
     return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: const SizedBox.shrink(),
+        actions: const [CartIconButton(), ReservationIconButton()],
+      ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () => ref.read(homeControllerProvider.notifier).refresh(),
@@ -42,6 +49,20 @@ class HomePage extends ConsumerWidget {
             data: (data) => _HomeContent(userName: userName, data: data),
           ),
         ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          // El asistente requiere sesión iniciada (ver sección 21); go()
+          // en lugar de push() por el mismo motivo que FavoriteButton.
+          final session = ref.read(sessionControllerProvider);
+          if (session is! SessionAuthenticated) {
+            context.go(RoutePaths.login);
+            return;
+          }
+          context.push(RoutePaths.aiAssistant);
+        },
+        icon: const Icon(Icons.chat_bubble_outline),
+        label: const Text('Asistente'),
       ),
     );
   }

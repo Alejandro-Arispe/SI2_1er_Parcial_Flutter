@@ -11,9 +11,11 @@ import 'package:fashion_store/core/widgets/app_button.dart';
 import 'package:fashion_store/core/widgets/empty_state.dart';
 import 'package:fashion_store/core/widgets/error_state.dart';
 import 'package:fashion_store/core/widgets/loading_indicator.dart';
+import 'package:fashion_store/features/cart/presentation/widgets/cart_icon_button.dart';
 import 'package:fashion_store/features/catalog/domain/entities/category.dart';
 import 'package:fashion_store/features/catalog/presentation/controllers/catalog_controller.dart';
 import 'package:fashion_store/features/catalog/presentation/widgets/product_card.dart';
+import 'package:fashion_store/features/reservations/presentation/widgets/reservation_icon_button.dart';
 
 /// Precio máximo considerado por el filtro de rango. Es un límite
 /// razonable para los datos de desarrollo actuales; cuando el backend
@@ -81,6 +83,8 @@ class _CatalogPageState extends ConsumerState<CatalogPage> {
       appBar: AppBar(
         title: const Text('Catálogo'),
         actions: [
+          const CartIconButton(),
+          const ReservationIconButton(),
           IconButton(
             tooltip: 'Filtros',
             onPressed: state.isInitialLoading

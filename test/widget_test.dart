@@ -203,9 +203,15 @@ void main() {
 
         // La galería de imágenes a ancho completo es más alta que el
         // viewport del test, así que hay que desplazarse para que la
-        // descripción quede dentro del árbol de widgets construido.
-        await tester.drag(find.byType(ListView).first, const Offset(0, -600));
-        await tester.pump();
+        // descripción quede dentro del árbol de widgets construido. Se
+        // arrastra en pasos y se repite hasta encontrarla en lugar de un
+        // único desplazamiento fijo, porque el viewport disponible
+        // cambia según la pantalla (por ejemplo, al agregar la barra de
+        // "Agregar al carrito" en la Fase 13).
+        for (var i = 0; i < 6 && find.text('Descripción').evaluate().isEmpty; i++) {
+          await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+          await tester.pump();
+        }
 
         expect(find.text('Descripción'), findsOneWidget);
         expect(find.textContaining('Zapatillas Urbanas es una prenda'), findsOneWidget);
@@ -243,6 +249,298 @@ void main() {
         expect(branchSectionFinder, findsOneWidget);
         expect(find.text('FashionStore San Miguel'), findsOneWidget);
         expect(find.text('La Paz'), findsOneWidget);
+
+        // Fase 13: carrito. La variante S + primer color de "Zapatillas
+        // Urbanas" es una combinación disponible (ver
+        // CatalogMockDataSource._generateVariants), así que el botón de
+        // agregar al carrito debe estar habilitado.
+        final addToCartFinder = find.widgetWithText(ElevatedButton, 'Agregar al carrito');
+        await tester.ensureVisible(addToCartFinder);
+        await tester.pump();
+        await tester.tap(addToCartFinder);
+        await tester.pump();
+        // CartController.addToCart espera dos llamadas secuenciales del
+        // mock (agregar el ítem y luego recargar el carrito, ~400ms cada
+        // una) antes de mostrar la confirmación.
+        await tester.pump(const Duration(milliseconds: 900));
+
+        expect(find.text('Se agregó Zapatillas Urbanas al carrito.'), findsOneWidget);
+
+        // Abre el carrito desde el ícono del AppBar (puede haber más de
+        // una instancia montada por el IndexedStack de las pestañas,
+        // igual que con el corazón de favoritos en la Fase 12).
+        await tester.tap(find.byTooltip('Carrito').first);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+
+        expect(find.text('Zapatillas Urbanas'), findsOneWidget);
+        expect(find.textContaining('Talla S'), findsOneWidget);
+
+        // Aumentar la cantidad se refleja de inmediato (actualización
+        // optimista), sin esperar la respuesta del mock.
+        await tester.tap(find.byIcon(Icons.add));
+        await tester.pump();
+        expect(find.text('2'), findsOneWidget);
+        await tester.pump(const Duration(milliseconds: 400));
+
+        // Quitar el ítem deja el carrito vacío.
+        await tester.tap(find.byIcon(Icons.delete_outline));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+
+        expect(find.text('Tu carrito está vacío'), findsOneWidget);
+
+        // Fase 14: reservas. Se vuelve al detalle de producto (el carrito
+        // se abrió con push, así que sigue debajo en la pila) para
+        // agregar la variante ya seleccionada a la reserva (sección 10:
+        // varias prendas, sucursal y horario únicos, no una acción de un
+        // solo toque por producto).
+        await tester.tap(find.byIcon(Icons.arrow_back).first);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 200));
+
+        final addToReservationFinder = find.widgetWithText(OutlinedButton, 'Agregar a la reserva');
+        await tester.ensureVisible(addToReservationFinder);
+        await tester.pump();
+        await tester.tap(addToReservationFinder);
+        await tester.pump();
+
+        expect(find.textContaining('Se agregó Zapatillas Urbanas a tu reserva.'), findsOneWidget);
+
+        // Abre el borrador de reserva desde su ícono en el AppBar.
+        await tester.tap(find.byTooltip('Reservar prendas').first);
+        await tester.pump();
+        // reservationCheckoutControllerProvider carga las sucursales al
+        // construirse (~400ms de latencia del mock).
+        await tester.pump(const Duration(milliseconds: 500));
+
+        expect(find.text('Zapatillas Urbanas'), findsOneWidget);
+        expect(find.textContaining('Talla S'), findsOneWidget);
+
+        // Confirmar sin elegir sucursal ni horario debe mostrar ambos
+        // errores de validación en lugar de crear la reserva.
+        for (var i = 0; i < 6 && find.text('Confirmar reserva').evaluate().isEmpty; i++) {
+          await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+          await tester.pump();
+        }
+        final confirmReservationFinder = find.widgetWithText(ElevatedButton, 'Confirmar reserva');
+        await tester.tap(confirmReservationFinder);
+        await tester.pump();
+
+        expect(find.text('Selecciona una sucursal para la reserva.'), findsOneWidget);
+        expect(find.text('Elige un horario aproximado.'), findsOneWidget);
+
+        // Elige la sucursal.
+        final branchTileFinder = find.text('FashionStore San Miguel');
+        await tester.ensureVisible(branchTileFinder);
+        await tester.pump();
+        await tester.tap(branchTileFinder);
+        await tester.pump();
+
+        // Elige el horario: se acepta la fecha y hora por defecto (hoy,
+        // ahora) en ambos selectores nativos de Material.
+        final scheduleButtonFinder = find.text('Elegir horario');
+        await tester.ensureVisible(scheduleButtonFinder);
+        await tester.pump();
+        await tester.tap(scheduleButtonFinder);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        await tester.tap(find.text('OK'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        await tester.tap(find.text('OK'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        expect(find.text('Selecciona una sucursal para la reserva.'), findsNothing);
+        expect(find.text('Elige un horario aproximado.'), findsNothing);
+
+        for (var i = 0; i < 6 && find.text('Confirmar reserva').evaluate().isEmpty; i++) {
+          await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+          await tester.pump();
+        }
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Confirmar reserva'));
+        await tester.pump();
+        // CreateReservationUseCase (~400ms) y la recarga de la lista de
+        // reservas (~400ms) antes de mostrar la confirmación.
+        await tester.pump(const Duration(milliseconds: 900));
+
+        expect(find.text('Reserva confirmada'), findsOneWidget);
+        expect(find.textContaining('FashionStore San Miguel'), findsOneWidget);
+
+        // La reserva se ve reflejada en "Mis reservas".
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Ver mis reservas'));
+        await tester.pump();
+
+        expect(find.text('Reserva #reservation-1'), findsOneWidget);
+        expect(find.textContaining('Zapatillas Urbanas · Talla S'), findsOneWidget);
+        expect(find.text('Activa'), findsOneWidget);
+
+        // Cancelar la reserva actualiza su estado sin eliminarla de la
+        // lista, para conservar el historial.
+        await tester.tap(find.text('Cancelar reserva'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+
+        expect(find.text('Cancelada'), findsOneWidget);
+        expect(find.text('Cancelar reserva'), findsNothing);
+
+        // Fase 15: checkout. Se vuelve al detalle de producto: primero se
+        // sale de "Mis reservas" y luego del borrador de reserva, ambos
+        // apilados con push sobre la pestaña Catálogo. Tras los dos pop
+        // ya se está de vuelta en el detalle (no se vuelve a tocar la
+        // pestaña Catálogo: como ya es la pestaña activa, tocarla otra
+        // vez reiniciaría esa rama a su raíz, perdiendo el detalle
+        // abierto, ver MainScaffold).
+        await tester.tap(find.byIcon(Icons.arrow_back).first);
+        await tester.pump();
+        await tester.tap(find.byIcon(Icons.arrow_back).first);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 200));
+
+        final addToCartAgainFinder = find.widgetWithText(ElevatedButton, 'Agregar al carrito');
+        await tester.ensureVisible(addToCartAgainFinder);
+        await tester.pump();
+        await tester.tap(addToCartAgainFinder);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 900));
+
+        await tester.tap(find.byTooltip('Carrito').first);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Continuar a checkout'));
+        await tester.pump();
+        // checkoutControllerProvider carga las sucursales al construirse
+        // (~400ms de latencia del mock).
+        await tester.pump(const Duration(milliseconds: 500));
+
+        expect(find.text('Zapatillas Urbanas'), findsOneWidget);
+        expect(find.textContaining('Talla S'), findsOneWidget);
+
+        // Cambiar a "Recojo en sucursal" muestra la lista de sucursales
+        // en lugar del campo de dirección, y confirmar sin elegir una
+        // debe mostrar un error de validación en lugar de crear el pedido.
+        await tester.tap(find.text('Recojo en sucursal'));
+        await tester.pump();
+
+        expect(find.text('FashionStore San Miguel'), findsOneWidget);
+        expect(find.text('Dirección de entrega'), findsNothing);
+
+        // La lista de sucursales empuja el botón fuera del extent
+        // construido del ListView (mismo caso que "Descripción" en la
+        // Fase 9): hay que desplazarse antes de que exista en el árbol.
+        for (var i = 0; i < 6 && find.text('Confirmar pedido').evaluate().isEmpty; i++) {
+          await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+          await tester.pump();
+        }
+
+        final confirmOrderFinder = find.widgetWithText(ElevatedButton, 'Confirmar pedido');
+        await tester.tap(confirmOrderFinder);
+        await tester.pump();
+
+        expect(find.text('Selecciona una sucursal para recoger tu pedido.'), findsOneWidget);
+        expect(find.text('Pedido creado'), findsNothing);
+
+        // Se vuelve a "Envío a domicilio" (el método que sí se completa
+        // en este flujo) y se llena la dirección. El chip quedó arriba
+        // del scroll actual, así que hay que traerlo de vuelta a vista.
+        final deliveryChipFinder = find.text('Envío a domicilio');
+        await tester.ensureVisible(deliveryChipFinder);
+        await tester.pump();
+        await tester.tap(deliveryChipFinder);
+        await tester.pump();
+
+        await tester.enterText(find.byType(TextFormField), 'Av. Siempre Viva 123');
+        await tester.pump();
+
+        for (var i = 0; i < 6 && find.text('Confirmar pedido').evaluate().isEmpty; i++) {
+          await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+          await tester.pump();
+        }
+        final confirmDeliveryOrderFinder = find.widgetWithText(ElevatedButton, 'Confirmar pedido');
+        await tester.tap(confirmDeliveryOrderFinder);
+        await tester.pump();
+        // CreateOrderUseCase (~500ms) y CartController.clearCart (~300ms).
+        await tester.pump(const Duration(milliseconds: 900));
+
+        expect(find.text('Pedido creado'), findsOneWidget);
+        expect(find.textContaining('Av. Siempre Viva 123'), findsOneWidget);
+
+        // Fase 16: pago. En modo mock (AppConfig.useMockData, el valor
+        // por defecto de estos tests) no se toca el SDK de Stripe: se
+        // muestra el aviso de modo de prueba y un botón de pago directo.
+        expect(find.textContaining('Modo de prueba'), findsOneWidget);
+
+        final payButtonFinder = find.widgetWithText(ElevatedButton, 'Pagar Bs 164');
+        await tester.ensureVisible(payButtonFinder);
+        await tester.pump();
+        await tester.tap(payButtonFinder);
+        await tester.pump();
+        // OrderMockDataSource.payOrder simula ~800ms de procesamiento.
+        await tester.pump(const Duration(milliseconds: 800));
+
+        expect(find.text('Pago exitoso'), findsOneWidget);
+        expect(find.text('Pedido creado'), findsNothing);
+
+        // El carrito quedó vacío desde que se confirmó el pedido.
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Volver al inicio'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 1200));
+
+        expect(find.text('Destacados'), findsOneWidget);
+
+        // Fase 17: historial de compras. El pedido recién pagado debe
+        // aparecer en "Mis compras", accesible desde el perfil.
+        await tester.tap(find.text('Perfil').first);
+        await tester.pump();
+
+        final ordersLinkFinder = find.text('Mis compras');
+        await tester.ensureVisible(ordersLinkFinder);
+        await tester.pump();
+        await tester.tap(ordersLinkFinder);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+
+        expect(find.text('Pedido #order-1'), findsOneWidget);
+        expect(find.text('Pagado'), findsOneWidget);
+        expect(find.textContaining('Zapatillas Urbanas · Talla S'), findsOneWidget);
+        expect(find.textContaining('Av. Siempre Viva 123'), findsOneWidget);
+
+        // Fase 18: asistente IA. Se vuelve al perfil (Mis compras se
+        // abrió con push) para entrar al asistente desde su enlace.
+        await tester.tap(find.byIcon(Icons.arrow_back).first);
+        await tester.pump();
+
+        final assistantLinkFinder = find.text('Asistente FashionStore');
+        await tester.ensureVisible(assistantLinkFinder);
+        await tester.pump();
+        await tester.tap(assistantLinkFinder);
+        await tester.pump();
+
+        // El saludo inicial es local: no requiere esperar ninguna
+        // llamada.
+        expect(find.textContaining('Hola, soy el asistente de FashionStore'), findsOneWidget);
+
+        // Se envía con la acción "send" del teclado en lugar de tocar el
+        // ícono: en el viewport reducido del test, el botón queda tan
+        // pegado al borde de la pantalla que el hit test no siempre
+        // acierta sobre él.
+        await tester.enterText(find.byType(TextField), 'Quiero un vestido');
+        await tester.testTextInput.receiveAction(TextInputAction.send);
+        await tester.pump();
+        // AiAssistantMockDataSource simula ~600ms antes de responder; la
+        // respuesta nunca inventa productos, solo usa el catálogo real
+        // (sección 15 del documento).
+        // El mock espera su propia latencia (~600ms) más las de
+        // CatalogDataSource.getCategories() y getProducts() (~500ms
+        // cada una) para armar la sugerencia a partir del catálogo real.
+        await tester.pump(const Duration(milliseconds: 1700));
+
+        expect(find.textContaining('Vestidos disponibles'), findsOneWidget);
+        expect(find.text('Vestido Floral'), findsWidgets);
       },
       createHttpClient: (context) => _FakeHttpClient(),
     );

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:fashion_store/core/network/api_endpoints.dart';
 import 'package:fashion_store/features/catalog/data/datasources/catalog_data_source.dart';
+import 'package:fashion_store/features/catalog/data/models/branch_model.dart';
 import 'package:fashion_store/features/catalog/data/models/branch_stock_model.dart';
 import 'package:fashion_store/features/catalog/data/models/category_model.dart';
 import 'package:fashion_store/features/catalog/data/models/product_detail_model.dart';
@@ -73,6 +74,14 @@ class CatalogApiDataSource implements CatalogDataSource {
     );
     return response.data!
         .map((json) => BranchStockModel.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<List<BranchModel>> getBranches() async {
+    final response = await _dio.get<List<dynamic>>(ApiEndpoints.branches);
+    return response.data!
+        .map((json) => BranchModel.fromJson(json as Map<String, dynamic>))
         .toList();
   }
 }

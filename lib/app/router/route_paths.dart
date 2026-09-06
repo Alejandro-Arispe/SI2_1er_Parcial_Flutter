@@ -19,6 +19,7 @@ class RoutePaths {
   static const String checkout = '/checkout';
   static const String orders = '/orders';
   static const String reservations = '/reservations';
+  static const String reservationDraft = '/reservation-draft';
   static const String tryOn = '/try-on';
   static const String aiAssistant = '/ai-assistant';
 
@@ -33,6 +34,7 @@ class RoutePaths {
     checkout,
     orders,
     reservations,
+    reservationDraft,
     profile,
     aiAssistant,
   ];

@@ -1,4 +1,5 @@
 import 'package:fashion_store/core/utils/result.dart';
+import 'package:fashion_store/features/catalog/domain/entities/branch.dart';
 import 'package:fashion_store/features/catalog/domain/entities/branch_stock.dart';
 import 'package:fashion_store/features/catalog/domain/entities/category.dart';
 import 'package:fashion_store/features/catalog/domain/entities/product.dart';
@@ -28,4 +29,6 @@ abstract class CatalogRepository {
   Future<Result<ProductDetail>> getProductDetail(String productId);
 
   Future<Result<List<BranchStock>>> getVariantAvailability(String variantId);
+
+  Future<Result<List<Branch>>> getBranches();
 }

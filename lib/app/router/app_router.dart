@@ -16,6 +16,7 @@ import 'package:fashion_store/features/home/presentation/pages/home_page.dart';
 import 'package:fashion_store/features/orders/presentation/pages/orders_page.dart';
 import 'package:fashion_store/features/product/presentation/pages/product_detail_page.dart';
 import 'package:fashion_store/features/profile/presentation/pages/profile_page.dart';
+import 'package:fashion_store/features/reservations/presentation/pages/reservation_cart_page.dart';
 import 'package:fashion_store/features/reservations/presentation/pages/reservations_page.dart';
 import 'package:fashion_store/features/try_on/presentation/pages/try_on_page.dart';
 import 'package:fashion_store/shared/session/session_controller.dart';
@@ -85,6 +86,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: RoutePaths.checkout, builder: (context, state) => const CheckoutPage()),
       GoRoute(path: RoutePaths.orders, builder: (context, state) => const OrdersPage()),
       GoRoute(path: RoutePaths.reservations, builder: (context, state) => const ReservationsPage()),
+      GoRoute(path: RoutePaths.reservationDraft, builder: (context, state) => const ReservationCartPage()),
       GoRoute(path: RoutePaths.tryOn, builder: (context, state) => const TryOnPage()),
       GoRoute(path: RoutePaths.aiAssistant, builder: (context, state) => const AiAssistantPage()),
 

@@ -1,3 +1,4 @@
+import 'package:fashion_store/features/catalog/data/models/branch_model.dart';
 import 'package:fashion_store/features/catalog/data/models/branch_stock_model.dart';
 import 'package:fashion_store/features/catalog/data/models/category_model.dart';
 import 'package:fashion_store/features/catalog/data/models/product_detail_model.dart';
@@ -38,4 +39,10 @@ abstract class CatalogDataSource {
   /// el cliente eligió ambas, porque antes de eso no hay una variante
   /// concreta sobre la cual consultar stock.
   Future<List<BranchStockModel>> getVariantAvailability(String variantId);
+
+  /// Sucursales físicas de la empresa (ver sección 8 del documento).
+  /// Usado por reservas (Fase 14) y por la selección de recojo en
+  /// checkout (Fase 15); a diferencia de getVariantAvailability, no
+  /// depende de una variante concreta.
+  Future<List<BranchModel>> getBranches();
 }

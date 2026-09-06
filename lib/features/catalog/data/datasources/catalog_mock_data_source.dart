@@ -201,6 +201,12 @@ class CatalogMockDataSource implements CatalogDataSource {
   }
 
   @override
+  Future<List<BranchModel>> getBranches() async {
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    return _branches;
+  }
+
+  @override
   Future<List<BranchStockModel>> getVariantAvailability(String variantId) async {
     await Future<void>.delayed(const Duration(milliseconds: 500));
 

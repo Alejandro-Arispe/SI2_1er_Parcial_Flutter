@@ -28,23 +28,54 @@ class ProfilePage extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
-              radius: 32,
-              child: Text(
-                (user?.name.isNotEmpty ?? false) ? user!.name[0].toUpperCase() : '?',
-                style: Theme.of(context).textTheme.displayMedium,
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      radius: 32,
+                      child: Text(
+                        (user?.name.isNotEmpty ?? false) ? user!.name[0].toUpperCase() : '?',
+                        style: Theme.of(context).textTheme.displayMedium,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    Text(user?.name ?? 'Cliente', style: Theme.of(context).textTheme.headlineSmall),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(user?.email ?? '', style: Theme.of(context).textTheme.bodyMedium),
+                    const SizedBox(height: AppSpacing.xl),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.receipt_long_outlined),
+                      title: const Text('Mis compras'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => context.push(RoutePaths.orders),
+                    ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.event_available_outlined),
+                      title: const Text('Mis reservas'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => context.push(RoutePaths.reservations),
+                    ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.chat_bubble_outline),
+                      title: const Text('Asistente FashionStore'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => context.push(RoutePaths.aiAssistant),
+                    ),
+                    const SizedBox(height: AppSpacing.xl),
+                    Text(
+                      'La gestión completa del perfil (datos personales, direcciones) se implementará más adelante.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: AppSpacing.md),
-            Text(user?.name ?? 'Cliente', style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: AppSpacing.xs),
-            Text(user?.email ?? '', style: Theme.of(context).textTheme.bodyMedium),
-            const SizedBox(height: AppSpacing.xl),
-            Text(
-              'La gestión completa del perfil (datos personales, direcciones) se implementará más adelante.',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const Spacer(),
             AppButton(
               label: 'Cerrar sesión',
               variant: AppButtonVariant.secondary,
