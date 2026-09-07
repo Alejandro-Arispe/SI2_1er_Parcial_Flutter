@@ -18,7 +18,9 @@ import 'package:fashion_store/features/product/presentation/pages/product_detail
 import 'package:fashion_store/features/profile/presentation/pages/profile_page.dart';
 import 'package:fashion_store/features/reservations/presentation/pages/reservation_cart_page.dart';
 import 'package:fashion_store/features/reservations/presentation/pages/reservations_page.dart';
+import 'package:fashion_store/features/try_on/presentation/pages/ar_try_on_page.dart';
 import 'package:fashion_store/features/try_on/presentation/pages/try_on_page.dart';
+import 'package:fashion_store/features/try_on/presentation/try_on_entry_args.dart';
 import 'package:fashion_store/shared/session/session_controller.dart';
 import 'package:fashion_store/shared/session/session_state.dart';
 
@@ -87,7 +89,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: RoutePaths.orders, builder: (context, state) => const OrdersPage()),
       GoRoute(path: RoutePaths.reservations, builder: (context, state) => const ReservationsPage()),
       GoRoute(path: RoutePaths.reservationDraft, builder: (context, state) => const ReservationCartPage()),
-      GoRoute(path: RoutePaths.tryOn, builder: (context, state) => const TryOnPage()),
+      GoRoute(
+        path: RoutePaths.tryOn,
+        builder: (context, state) => TryOnPage(entryArgs: state.extra as TryOnEntryArgs?),
+      ),
+      GoRoute(
+        path: RoutePaths.tryOnAr,
+        builder: (context, state) => ArTryOnPage(entryArgs: state.extra as TryOnEntryArgs?),
+      ),
       GoRoute(path: RoutePaths.aiAssistant, builder: (context, state) => const AiAssistantPage()),
 
       StatefulShellRoute.indexedStack(

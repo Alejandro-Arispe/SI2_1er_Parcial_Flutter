@@ -63,4 +63,16 @@ class ApiEndpoints {
   // catálogo. Flutter nunca llama a Gemini directamente ni maneja su
   // clave (sección 32).
   static const String assistantMessages = '/assistant/messages';
+
+  // Recomendaciones (Fase 19, ver sección 16 del documento): el backend
+  // combina favoritos, historial de compras y navegación del cliente
+  // autenticado; "recently_viewed" son los últimos productos consultados
+  // en este dispositivo, que el backend no puede conocer por sí solo.
+  static const String recommendations = '/recommendations';
+
+  // Probador virtual por fotografía (Fase 20, ver sección 17 del
+  // documento): el backend recibe la foto y los datos de la prenda y
+  // devuelve la imagen generada; ahí es donde vive la integración con
+  // Gemini (sección 32).
+  static const String tryOnPhoto = '/try-on/photo';
 }

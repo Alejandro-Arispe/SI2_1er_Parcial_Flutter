@@ -1,4 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Probador virtual por fotografía (Fase 20) y por cámara/AR (Fase
+         21): image_picker y camera necesitan este permiso declarado para
+         poder abrir la cámara del dispositivo. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Dictado por voz en el asistente (Fase 22): speech_to_text
+         necesita este permiso declarado para poder escuchar el
+         micrófono. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <application
         android:label="fashion_store"
         android:name="${applicationName}"

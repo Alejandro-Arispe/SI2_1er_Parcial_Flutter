@@ -14,6 +14,7 @@ import 'package:fashion_store/features/cart/presentation/widgets/cart_icon_butto
 import 'package:fashion_store/features/catalog/presentation/controllers/catalog_controller.dart';
 import 'package:fashion_store/features/catalog/presentation/widgets/product_card.dart';
 import 'package:fashion_store/features/home/presentation/controllers/home_controller.dart';
+import 'package:fashion_store/features/recommendations/presentation/controllers/recommendations_provider.dart';
 import 'package:fashion_store/features/reservations/presentation/widgets/reservation_icon_button.dart';
 import 'package:fashion_store/shared/session/session_controller.dart';
 import 'package:fashion_store/shared/session/session_state.dart';
@@ -109,6 +110,44 @@ class _HomeContent extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           _FeaturedProductList(products: data.featuredProducts),
         ],
+        // Las recomendaciones son personalizadas (favoritos, compras y
+        // navegación de la clienta, ver sección 16), así que solo tienen
+        // sentido con sesión iniciada (sección 21: "funciones
+        // personalizadas de IA" requieren cuenta).
+        if (userName != null) ...[
+          const SizedBox(height: AppSpacing.xl),
+          const _RecommendationsSection(),
+        ],
+      ],
+    );
+  }
+}
+
+/// Sugerencias personalizadas (Fase 19). Se oculta en silencio mientras
+/// carga o si falla: es un complemento del catálogo, no una función
+/// crítica, y esta pantalla ya tiene su propio estado de carga/error
+/// para el contenido principal.
+class _RecommendationsSection extends ConsumerWidget {
+  const _RecommendationsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final recommendationsAsync = ref.watch(recommendationsProvider);
+
+    // Se usa el valor disponible (recommendationsAsync.value) en lugar
+    // de switchear por isLoading/hasError: cuando cambian los últimos
+    // productos consultados, el provider vuelve a "cargando" pero
+    // conserva la lista anterior (ver AsyncValue con valor previo), y
+    // esta sección no debe parpadear/ocultarse cada vez que eso pasa.
+    final products = recommendationsAsync.value;
+    if (products == null || products.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionTitle('Recomendado para ti'),
+        const SizedBox(height: AppSpacing.sm),
+        _FeaturedProductList(products: products),
       ],
     );
   }

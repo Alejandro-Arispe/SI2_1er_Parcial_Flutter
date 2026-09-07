@@ -5,8 +5,10 @@ import 'package:go_router/go_router.dart';
 import 'package:fashion_store/app/router/route_paths.dart';
 import 'package:fashion_store/core/theme/app_colors.dart';
 import 'package:fashion_store/core/theme/app_spacing.dart';
+import 'package:fashion_store/core/voice/flutter_tts_voice_output_source.dart';
 import 'package:fashion_store/features/ai_assistant/domain/entities/assistant_message.dart';
 import 'package:fashion_store/features/ai_assistant/presentation/controllers/ai_assistant_controller.dart';
+import 'package:fashion_store/features/ai_assistant/presentation/controllers/voice_input_controller.dart';
 import 'package:fashion_store/features/catalog/domain/entities/product.dart';
 import 'package:fashion_store/features/catalog/presentation/widgets/product_card.dart';
 
@@ -55,6 +57,32 @@ class _AiAssistantPageState extends ConsumerState<AiAssistantPage> {
   Widget build(BuildContext context) {
     final state = ref.watch(aiAssistantControllerProvider);
 
+    // El dictado por voz (Fase 22) llena el campo de texto a medida que
+    // se reconocen palabras, en lugar de que el composer tenga que leer
+    // el provider directamente: así el TextEditingController (que es de
+    // este State, no de Riverpod) se mantiene como la única fuente de
+    // verdad del texto que se va a enviar.
+    ref.listen(voiceInputControllerProvider, (previous, next) {
+      if (next.transcript != (previous?.transcript ?? '')) {
+        _textController.value = TextEditingValue(
+          text: next.transcript,
+          selection: TextSelection.collapsed(offset: next.transcript.length),
+        );
+      }
+      if (next.status == VoiceInputStatus.unavailable &&
+          previous?.status != VoiceInputStatus.unavailable) {
+        ScaffoldMessenger.of(context)
+          ..removeCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('No se pudo acceder al micrófono en este dispositivo.'),
+            ),
+          );
+      }
+    });
+
+    final voiceState = ref.watch(voiceInputControllerProvider);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Asistente FashionStore')),
       body: Column(
@@ -80,20 +108,26 @@ class _AiAssistantPageState extends ConsumerState<AiAssistantPage> {
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.error),
               ),
             ),
-          _Composer(controller: _textController, enabled: !state.isSending, onSend: _send),
+          _Composer(
+            controller: _textController,
+            enabled: !state.isSending,
+            isListening: voiceState.status == VoiceInputStatus.listening,
+            onSend: _send,
+            onToggleVoice: () => ref.read(voiceInputControllerProvider.notifier).toggleListening(),
+          ),
         ],
       ),
     );
   }
 }
 
-class _MessageBubble extends StatelessWidget {
+class _MessageBubble extends ConsumerWidget {
   final AssistantMessage message;
 
   const _MessageBubble({required this.message});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isUser = message.role == MessageRole.user;
 
     return Padding(
@@ -115,6 +149,17 @@ class _MessageBubble extends StatelessWidget {
                   ),
             ),
           ),
+          // Leer en voz alta (Fase 22, sección 18) solo tiene sentido
+          // para las respuestas del asistente: el mensaje de la propia
+          // clienta ya lo dijo ella, no hace falta que la app lo repita.
+          if (!isUser)
+            IconButton(
+              tooltip: 'Escuchar respuesta',
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.volume_up_outlined),
+              onPressed: () => ref.read(voiceOutputSourceProvider).speak(message.content),
+            ),
           if (message.suggestedProducts.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.sm),
             _SuggestedProducts(products: message.suggestedProducts),
@@ -187,9 +232,17 @@ class _TypingIndicator extends StatelessWidget {
 class _Composer extends StatelessWidget {
   final TextEditingController controller;
   final bool enabled;
+  final bool isListening;
   final VoidCallback onSend;
+  final VoidCallback onToggleVoice;
 
-  const _Composer({required this.controller, required this.enabled, required this.onSend});
+  const _Composer({
+    required this.controller,
+    required this.enabled,
+    required this.isListening,
+    required this.onSend,
+    required this.onToggleVoice,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -203,15 +256,25 @@ class _Composer extends StatelessWidget {
           padding: const EdgeInsets.all(AppSpacing.sm),
           child: Row(
             children: [
+              // Dictado por voz (Fase 22, sección 18 del documento):
+              // alternativa a escribir, no reemplaza el campo de texto,
+              // así la clienta puede corregir lo reconocido antes de
+              // enviar.
+              IconButton(
+                tooltip: isListening ? 'Detener dictado' : 'Dictar por voz',
+                icon: Icon(isListening ? Icons.mic : Icons.mic_none),
+                color: isListening ? AppColors.primary : null,
+                onPressed: enabled ? onToggleVoice : null,
+              ),
               Expanded(
                 child: TextField(
                   controller: controller,
                   enabled: enabled,
                   textInputAction: TextInputAction.send,
                   onSubmitted: (_) => onSend(),
-                  decoration: const InputDecoration(
-                    hintText: 'Escribe tu consulta...',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    hintText: isListening ? 'Escuchando...' : 'Escribe tu consulta...',
+                    border: const OutlineInputBorder(),
                     isDense: true,
                   ),
                 ),

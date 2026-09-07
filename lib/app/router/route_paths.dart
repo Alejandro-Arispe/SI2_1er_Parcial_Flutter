@@ -21,6 +21,7 @@ class RoutePaths {
   static const String reservations = '/reservations';
   static const String reservationDraft = '/reservation-draft';
   static const String tryOn = '/try-on';
+  static const String tryOnAr = '/try-on-ar';
   static const String aiAssistant = '/ai-assistant';
 
   static String productDetail(String productId) => '$catalog/product/$productId';

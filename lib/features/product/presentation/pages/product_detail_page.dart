@@ -22,8 +22,12 @@ import 'package:fashion_store/features/cart/presentation/widgets/cart_icon_butto
 import 'package:fashion_store/features/favorites/presentation/widgets/favorite_button.dart';
 import 'package:fashion_store/features/product/presentation/controllers/product_detail_provider.dart';
 import 'package:fashion_store/features/product/presentation/controllers/variant_availability_provider.dart';
+import 'package:fashion_store/features/recommendations/presentation/controllers/recently_viewed_controller.dart';
 import 'package:fashion_store/features/reservations/presentation/controllers/reservation_draft_controller.dart';
 import 'package:fashion_store/features/reservations/presentation/widgets/reservation_icon_button.dart';
+import 'package:fashion_store/features/try_on/domain/services/try_on_service.dart';
+import 'package:fashion_store/features/try_on/presentation/controllers/try_on_availability_provider.dart';
+import 'package:fashion_store/features/try_on/presentation/try_on_entry_args.dart';
 import 'package:fashion_store/shared/session/session_controller.dart';
 import 'package:fashion_store/shared/session/session_state.dart';
 
@@ -50,6 +54,14 @@ class _ProductDetailPageState extends ConsumerState<ProductDetailPage> {
   @override
   Widget build(BuildContext context) {
     final detailAsync = ref.watch(productDetailProvider(widget.productId));
+
+    // Se registra la vista para alimentar las recomendaciones (Fase 19,
+    // sección 16: "historial de navegación"). ref.listen en vez de
+    // hacerlo dentro de "data:" más abajo, para que se registre una sola
+    // vez cuando el detalle termina de cargar, no en cada rebuild.
+    ref.listen(productDetailProvider(widget.productId), (previous, next) {
+      next.whenData((detail) => ref.read(recentlyViewedControllerProvider.notifier).recordView(detail.id));
+    });
 
     final selectedVariant = detailAsync.value == null
         ? null
@@ -190,11 +202,63 @@ class _AddToCartBar extends ConsumerWidget {
                       }
                     : null,
               ),
+              const SizedBox(height: AppSpacing.sm),
+              _TryOnButtons(detail: detail, variant: variant),
             ],
           ),
         ),
       ),
     );
+  }
+}
+
+/// Botones de entrada a los dos modos del probador virtual (Fase 20 y
+/// Fase 21, sección 17 del documento). Cuáles se muestran depende de
+/// TryOnService.isAvailable() de cada modo (sección 17.3: el resto de la
+/// app no decide esto mirando una implementación concreta, solo
+/// pregunta la disponibilidad de la abstracción) para no ofrecer AR en
+/// un dispositivo sin cámara física.
+class _TryOnButtons extends ConsumerWidget {
+  final ProductDetail detail;
+  final ProductVariant? variant;
+
+  const _TryOnButtons({required this.detail, required this.variant});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final modesAsync = ref.watch(availableTryOnModesProvider);
+    // Mientras se resuelve la disponibilidad (o si la consulta falla),
+    // se asume que ambos modos podrían estar disponibles: es preferible
+    // mostrar un botón que informe un error puntual al tocarlo (sección
+    // 33) a ocultar por error una función que sí funciona.
+    final modes = modesAsync.value ?? {TryOnMode.photo, TryOnMode.ar};
+
+    return Column(
+      children: [
+        if (modes.contains(TryOnMode.photo))
+          AppButton(
+            label: 'Probar con tu foto',
+            icon: Icons.camera_alt_outlined,
+            variant: AppButtonVariant.secondary,
+            // No exige variante elegida ni sesión iniciada (sección 21:
+            // el probador virtual no guarda información personalizada).
+            onPressed: () => context.push(RoutePaths.tryOn, extra: _entryArgs()),
+          ),
+        if (modes.contains(TryOnMode.photo) && modes.contains(TryOnMode.ar))
+          const SizedBox(height: AppSpacing.sm),
+        if (modes.contains(TryOnMode.ar))
+          AppButton(
+            label: 'Probar con cámara (AR)',
+            icon: Icons.videocam_outlined,
+            variant: AppButtonVariant.secondary,
+            onPressed: () => context.push(RoutePaths.tryOnAr, extra: _entryArgs()),
+          ),
+      ],
+    );
+  }
+
+  TryOnEntryArgs _entryArgs() {
+    return TryOnEntryArgs(product: _productFromDetail(detail), colorHex: variant?.color.hexValue);
   }
 }
 

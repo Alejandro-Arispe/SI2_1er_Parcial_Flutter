@@ -2,13 +2,22 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 
 import 'package:fashion_store/app/app.dart';
 import 'package:fashion_store/core/security/secure_storage_service.dart';
+import 'package:fashion_store/core/voice/flutter_tts_voice_output_source.dart';
+import 'package:fashion_store/core/voice/speech_to_text_voice_input_source.dart';
+import 'package:fashion_store/core/voice/voice_input_source.dart';
+import 'package:fashion_store/core/voice/voice_output_source.dart';
+import 'package:fashion_store/features/try_on/data/services/ar_camera_source.dart';
+import 'package:fashion_store/features/try_on/data/services/mlkit_ar_camera_source.dart';
+import 'package:fashion_store/features/try_on/domain/entities/body_pose.dart';
 import 'package:fashion_store/shared/session/authenticated_user.dart';
 import 'package:fashion_store/shared/session/session_controller.dart';
 
@@ -98,13 +107,136 @@ class _FakeHttpClientResponse extends Stream<List<int>> implements HttpClientRes
   dynamic noSuchMethod(Invocation invocation) => null;
 }
 
+/// Fake de la plataforma de image_picker (Fase 20): en el entorno de test
+/// no hay cámara ni selector de archivos real, así que ambas fuentes
+/// responden con la misma imagen PNG válida usada para las respuestas de
+/// red (_transparentPng), suficiente para que TryOnMockDataSource pueda
+/// decodificarla y componer la vista previa.
+class _FakeImagePickerPlatform extends ImagePickerPlatform {
+  @override
+  Future<XFile?> getImageFromSource({
+    required ImageSource source,
+    ImagePickerOptions options = const ImagePickerOptions(),
+  }) async {
+    return XFile.fromData(_transparentPng, name: 'photo.png', mimeType: 'image/png');
+  }
+}
+
+/// Fake de ArCameraSource (Fase 21): en el entorno de test no hay una
+/// cámara real ni el plugin de ML Kit disponible, así que se simula un
+/// cuerpo detectado sin depender de ninguno de los dos. previewController
+/// queda en null a propósito (no hay CameraController real que crear),
+/// lo que ejercita el mismo camino de "vista previa no disponible" que
+/// vería un dispositivo sin cámara.
+class _FakeArCameraSource implements ArCameraSource {
+  final _poseController = StreamController<BodyPose?>.broadcast();
+
+  @override
+  Future<bool> isAvailable() async => true;
+
+  @override
+  Future<bool> requestPermission() async => true;
+
+  @override
+  Future<void> openSettings() async {}
+
+  @override
+  CameraController? get previewController => null;
+
+  @override
+  Stream<BodyPose?> get poseStream => _poseController.stream;
+
+  @override
+  Future<void> start() async {
+    // Se agenda con un delay real (no inmediato) para que la pose llegue
+    // recién después de que ArTryOnController alcance a suscribirse al
+    // stream (el controller escucha poseStream justo después de este
+    // await start(), no antes).
+    Future<void>.delayed(const Duration(milliseconds: 10), () {
+      if (!_poseController.isClosed) {
+        _poseController.add(
+          const BodyPose(
+            leftShoulder: Offset(20, 40),
+            rightShoulder: Offset(80, 40),
+            leftHip: Offset(25, 120),
+            rightHip: Offset(75, 120),
+            imageSize: Size(100, 200),
+          ),
+        );
+      }
+    });
+  }
+
+  @override
+  Future<void> stop() async {}
+
+  @override
+  Future<void> dispose() async {
+    await _poseController.close();
+  }
+}
+
+/// Fake de VoiceInputSource (Fase 22): en el entorno de test no hay
+/// reconocimiento de voz real disponible, así que se simula una
+/// transcripción fija apenas se empieza a "escuchar".
+class _FakeVoiceInputSource implements VoiceInputSource {
+  final _transcriptController = StreamController<String>.broadcast();
+  bool _listening = false;
+
+  @override
+  Future<bool> initialize() async => true;
+
+  @override
+  bool get isListening => _listening;
+
+  @override
+  Stream<String> get transcriptStream => _transcriptController.stream;
+
+  @override
+  Future<void> startListening() async {
+    _listening = true;
+    // Delay real (no inmediato) para que el texto llegue después de que
+    // VoiceInputController ya se suscribió al stream.
+    Future<void>.delayed(const Duration(milliseconds: 10), () {
+      if (!_transcriptController.isClosed) {
+        _transcriptController.add('Quiero un vestido para una fiesta');
+      }
+    });
+  }
+
+  @override
+  Future<void> stopListening() async => _listening = false;
+
+  @override
+  Future<void> dispose() async => _transcriptController.close();
+}
+
+/// Fake de VoiceOutputSource (Fase 22): no hay motor de texto a voz
+/// real en el entorno de test, así que no hace nada observable; solo
+/// existe para que tocar "Escuchar respuesta" no intente usar el plugin
+/// real de flutter_tts durante las pruebas.
+class _FakeVoiceOutputSource implements VoiceOutputSource {
+  @override
+  Future<void> speak(String text) async {}
+
+  @override
+  Future<void> stop() async {}
+}
+
 void main() {
   testWidgets('La app arranca en splash y redirige a Home sin sesión', (WidgetTester tester) async {
+    ImagePickerPlatform.instance = _FakeImagePickerPlatform();
+
     await HttpOverrides.runZoned(
       () async {
         await tester.pumpWidget(
           ProviderScope(
-            overrides: [secureStorageServiceProvider.overrideWithValue(_FakeSecureStorageService())],
+            overrides: [
+              secureStorageServiceProvider.overrideWithValue(_FakeSecureStorageService()),
+              arCameraSourceProvider.overrideWithValue(_FakeArCameraSource()),
+              voiceInputSourceProvider.overrideWithValue(_FakeVoiceInputSource()),
+              voiceOutputSourceProvider.overrideWithValue(_FakeVoiceOutputSource()),
+            ],
             child: const FashionStoreApp(),
           ),
         );
@@ -541,6 +673,182 @@ void main() {
 
         expect(find.textContaining('Vestidos disponibles'), findsOneWidget);
         expect(find.text('Vestido Floral'), findsWidgets);
+
+        // Fase 19: recomendaciones. A esta altura ya se acumularon
+        // señales reales: Vestido Floral como favorito (Fase 12, categoría
+        // Vestidos) y Zapatillas Urbanas comprado (Fases 15-17, categoría
+        // Zapatos). Se invalida el provider para forzar el recálculo con
+        // todas esas señales ya presentes (en la app real esto ocurre
+        // solo cuando cambian los últimos productos consultados).
+        await tester.tap(find.byIcon(Icons.arrow_back).first);
+        await tester.pump();
+        await tester.tap(find.text('Home').first);
+        await tester.pump();
+
+        // La sección de recomendaciones está más abajo que el extent
+        // construido del ListView (mismo caso que "Descripción" en la
+        // Fase 9): hay que desplazarse para que ConsumerWidget exista en
+        // el árbol. El provider ya se recalculó solo en algún momento
+        // desde que existen señales reales (compra y favorito), porque
+        // depende de los últimos productos consultados y esos cambiaron
+        // varias veces durante el recorrido; no hace falta invalidarlo
+        // a mano.
+        for (var i = 0; i < 6 && find.text('Recomendado para ti').evaluate().isEmpty; i++) {
+          await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+          await tester.pump();
+        }
+
+        final recommendationsTitleFinder = find.text('Recomendado para ti');
+        expect(recommendationsTitleFinder, findsOneWidget);
+        // Botines es una prenda de Zapatos (misma categoría que la
+        // compra) que no se compró ni se marcó como favorita, así que
+        // debe aparecer como sugerencia real del catálogo.
+        expect(find.text('Botines'), findsWidgets);
+
+        // Fase 20: probador virtual por fotografía. Se abre desde el
+        // detalle de un producto sugerido; no exige variante elegida ni
+        // requiere volver a iniciar sesión (el probador es accesible sin
+        // cuenta, ver sección 21).
+        final botinesFinder = find.text('Botines').first;
+        await tester.ensureVisible(botinesFinder);
+        await tester.pump();
+        await tester.tap(botinesFinder);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 600));
+
+        final tryOnEntryFinder = find.widgetWithText(OutlinedButton, 'Probar con tu foto');
+        await tester.ensureVisible(tryOnEntryFinder);
+        await tester.pump();
+        await tester.tap(tryOnEntryFinder);
+        await tester.pump();
+        // TryOnController.selectProduct se agenda con addPostFrameCallback
+        // (no se puede escribir el provider durante build/initState): hace
+        // falta un pump extra para que ese callback corra y la pantalla se
+        // reconstruya ya con la prenda elegida.
+        await tester.pump();
+
+        expect(find.text('Probador virtual'), findsOneWidget);
+        expect(find.text('Botines'), findsWidgets);
+        // Sin foto todavía, se muestra el ícono de marcador de posición.
+        expect(find.byIcon(Icons.image_outlined), findsOneWidget);
+
+        final cameraButtonFinder = find.widgetWithText(OutlinedButton, 'Tomar foto');
+        await tester.ensureVisible(cameraButtonFinder);
+        await tester.pump();
+        await tester.tap(cameraButtonFinder);
+        await tester.pump();
+
+        // Con una foto ya elegida, el marcador de posición desaparece y
+        // el botón de generar se habilita.
+        expect(find.byIcon(Icons.image_outlined), findsNothing);
+
+        final generateButtonFinder = find.widgetWithText(ElevatedButton, 'Generar vista previa');
+        await tester.ensureVisible(generateButtonFinder);
+        await tester.pump();
+        await tester.tap(generateButtonFinder);
+        await tester.pump();
+        // TryOnMockDataSource simula ~900ms de procesamiento mientras
+        // compone la vista previa localmente con dart:ui (no hay backend
+        // con Gemini todavía, ver sección 32).
+        await tester.pump(const Duration(milliseconds: 900));
+
+        expect(find.textContaining('No se pudo'), findsNothing);
+        expect(
+          find.textContaining('Esta vista previa se genera en tu dispositivo'),
+          findsOneWidget,
+        );
+
+        // Fase 21: probador por cámara/AR. Se vuelve al detalle de
+        // Botines (donde vive el segundo botón del probador) en lugar de
+        // abrir una prenda nueva.
+        await tester.tap(find.byIcon(Icons.arrow_back).first);
+        await tester.pump();
+
+        final arEntryFinder = find.widgetWithText(OutlinedButton, 'Probar con cámara (AR)');
+        await tester.ensureVisible(arEntryFinder);
+        await tester.pump();
+        await tester.tap(arEntryFinder);
+        await tester.pump();
+
+        expect(find.text('Probador con cámara'), findsOneWidget);
+
+        // ArTryOnController.start() encadena varios await (isAvailable,
+        // requestPermission, source.start) antes de suscribirse al
+        // stream de poses; varios pumps dejan avanzar cada paso sin
+        // depender de un tiempo real fijo.
+        await tester.pump();
+        await tester.pump();
+        await tester.pump();
+        // _FakeArCameraSource entrega la pose con un pequeño delay real,
+        // después de que el controller ya se suscribió al stream (ver
+        // comentario en el fake).
+        await tester.pump(const Duration(milliseconds: 50));
+
+        // No se llegó a un estado de error ni de permiso rechazado: se
+        // alcanzó el seguimiento en vivo.
+        expect(find.textContaining('no tiene una cámara disponible'), findsNothing);
+        expect(find.textContaining('necesita permiso de cámara'), findsNothing);
+        expect(find.textContaining('No se pudo iniciar la cámara'), findsNothing);
+
+        // El entorno de test no tiene una cámara real que mostrar (el
+        // fake no expone un CameraController), así que se ve el mensaje
+        // de vista previa no disponible en lugar de CameraPreview.
+        expect(find.textContaining('Vista previa de cámara no disponible'), findsOneWidget);
+
+        // Con la pose ya entregada, el aviso de "ubícate frente a la
+        // cámara" debe haber desaparecido: hay un cuerpo detectado y la
+        // prenda se está superponiendo.
+        expect(find.text('Ubícate frente a la cámara, de cuerpo entero.'), findsNothing);
+
+        // La tira para cambiar de prenda (arGarmentOptionsProvider)
+        // consulta el catálogo mock, que simula ~500ms de latencia; se
+        // espera ese tiempo para no dejar un timer pendiente al terminar
+        // el test.
+        await tester.pump(const Duration(milliseconds: 600));
+
+        // Fase 22: voz. Se vuelve a Home (dos niveles: el detalle de
+        // Botines y luego Home) para reabrir el asistente ya visitado en
+        // la Fase 18 y usar el dictado por voz en su composer.
+        await tester.tap(find.byIcon(Icons.arrow_back).first);
+        await tester.pump();
+        await tester.tap(find.byIcon(Icons.arrow_back).first);
+        await tester.pump();
+
+        final assistantFabFinder = find.widgetWithText(FloatingActionButton, 'Asistente');
+        await tester.tap(assistantFabFinder);
+        await tester.pump();
+
+        // La conversación de la Fase 18 sigue en memoria
+        // (aiAssistantControllerProvider no es autoDispose): se ve el
+        // historial previo sin tener que reconstruirlo.
+        expect(find.text('Quiero un vestido'), findsOneWidget);
+
+        final micButtonFinder = find.byTooltip('Dictar por voz');
+        await tester.tap(micButtonFinder);
+        await tester.pump();
+        // _FakeVoiceInputSource entrega la transcripción con un pequeño
+        // delay real, después de que VoiceInputController ya se
+        // suscribió al stream (ver comentario en el fake).
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(find.text('Quiero un vestido para una fiesta'), findsOneWidget);
+
+        await tester.testTextInput.receiveAction(TextInputAction.send);
+        await tester.pump();
+        // Mismo tiempo de espera que en la Fase 18: el mock simula su
+        // propia latencia más la de CatalogDataSource.getCategories() y
+        // getProducts().
+        await tester.pump(const Duration(milliseconds: 1700));
+
+        expect(find.textContaining('Vestidos disponibles'), findsOneWidget);
+
+        // Escuchar una respuesta del asistente (texto a voz) no debe
+        // requerir el plugin real ni romper el flujo.
+        final speakerButtonFinder = find.byIcon(Icons.volume_up_outlined).first;
+        await tester.ensureVisible(speakerButtonFinder);
+        await tester.pump();
+        await tester.tap(speakerButtonFinder);
+        await tester.pump();
       },
       createHttpClient: (context) => _FakeHttpClient(),
     );
