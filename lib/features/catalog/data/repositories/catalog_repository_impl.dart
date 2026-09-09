@@ -3,10 +3,12 @@ import 'package:fashion_store/core/config/app_config.dart';
 import 'package:fashion_store/core/error/error_mapper.dart';
 import 'package:fashion_store/core/error/exceptions.dart';
 import 'package:fashion_store/core/network/dio_client.dart';
+import 'package:fashion_store/core/storage/local_storage_service.dart';
 import 'package:fashion_store/core/utils/result.dart';
 import 'package:fashion_store/features/catalog/data/datasources/catalog_api_data_source.dart';
 import 'package:fashion_store/features/catalog/data/datasources/catalog_data_source.dart';
 import 'package:fashion_store/features/catalog/data/datasources/catalog_mock_data_source.dart';
+import 'package:fashion_store/features/catalog/data/repositories/caching_catalog_repository.dart';
 import 'package:fashion_store/features/catalog/domain/entities/branch.dart';
 import 'package:fashion_store/features/catalog/domain/entities/branch_stock.dart';
 import 'package:fashion_store/features/catalog/domain/entities/category.dart';
@@ -99,5 +101,10 @@ final catalogDataSourceProvider = Provider<CatalogDataSource>((ref) {
 });
 
 final catalogRepositoryProvider = Provider<CatalogRepository>((ref) {
-  return CatalogRepositoryImpl(ref.watch(catalogDataSourceProvider));
+  final baseRepository = CatalogRepositoryImpl(ref.watch(catalogDataSourceProvider));
+  // Se envuelve con la caché offline (Fase 23) para todos los modos: en
+  // mock nunca se activa el camino de respaldo (el mock no falla por
+  // conectividad), pero deja el catálogo real listo para funcionar sin
+  // conexión apenas se conecte al backend (Fase 24).
+  return CachingCatalogRepository(baseRepository, ref.watch(localStorageServiceProvider));
 });

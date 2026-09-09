@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import 'package:fashion_store/core/network/connectivity_service.dart';
+import 'package:fashion_store/core/theme/app_colors.dart';
+import 'package:fashion_store/core/theme/app_spacing.dart';
 
 /// Estructura visual compartida por las cuatro ramas principales del
 /// cliente: Home, Catálogo, Favoritos y Perfil.
@@ -12,15 +17,26 @@ import 'package:go_router/go_router.dart';
 /// alcanza como una ruta independiente (RoutePaths.cart) desde un ícono
 /// en las pantallas de catálogo/producto, siguiendo el patrón común de
 /// apps de moda donde el carrito es una acción, no una sección permanente.
-class MainScaffold extends StatelessWidget {
+class MainScaffold extends ConsumerWidget {
   final StatefulNavigationShell navigationShell;
 
   const MainScaffold({super.key, required this.navigationShell});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Aviso persistente de conectividad (Fase 23, sección 19 del
+    // documento): se muestra en las cuatro pestañas principales, no solo
+    // cuando una operación puntual falla, para que la clienta sepa desde
+    // el principio que está viendo datos guardados.
+    final isOffline = ref.watch(connectivityStreamProvider).value == false;
+
     return Scaffold(
-      body: navigationShell,
+      body: Column(
+        children: [
+          if (isOffline) const _OfflineBanner(),
+          Expanded(child: navigationShell),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: navigationShell.currentIndex,
         onDestinationSelected: (index) => navigationShell.goBranch(
@@ -51,6 +67,30 @@ class MainScaffold extends StatelessWidget {
             label: 'Perfil',
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _OfflineBanner extends StatelessWidget {
+  const _OfflineBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: AppColors.warning,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+          child: Text(
+            'Sin conexión a internet. Mostrando información guardada.',
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: AppColors.textOnPrimary),
+          ),
+        ),
       ),
     );
   }

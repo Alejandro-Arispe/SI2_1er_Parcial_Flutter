@@ -8,13 +8,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:fashion_store/app/app.dart';
+import 'package:fashion_store/core/network/connectivity_service.dart';
 import 'package:fashion_store/core/security/secure_storage_service.dart';
 import 'package:fashion_store/core/voice/flutter_tts_voice_output_source.dart';
 import 'package:fashion_store/core/voice/speech_to_text_voice_input_source.dart';
 import 'package:fashion_store/core/voice/voice_input_source.dart';
 import 'package:fashion_store/core/voice/voice_output_source.dart';
+import 'package:fashion_store/features/recommendations/presentation/controllers/recently_viewed_controller.dart';
 import 'package:fashion_store/features/try_on/data/services/ar_camera_source.dart';
 import 'package:fashion_store/features/try_on/data/services/mlkit_ar_camera_source.dart';
 import 'package:fashion_store/features/try_on/domain/entities/body_pose.dart';
@@ -35,6 +38,28 @@ class _FakeSecureStorageService extends SecureStorageService {
 
   @override
   Future<Map<String, String>?> readUserProfile() async => null;
+}
+
+/// Fake de ConnectivityService (Fase 23): empieza "en línea" para que
+/// los flujos críticos (checkout, pago, reserva) se comporten como antes
+/// de esta fase, pero permite alternar el estado desde el test
+/// (setOnline) para probar el aviso de sin conexión. connectivity_plus
+/// depende de un canal de plataforma que no existe en el entorno de
+/// test.
+class _FakeConnectivityService extends ConnectivityService {
+  final _controller = StreamController<bool>.broadcast();
+  bool _online = true;
+
+  void setOnline(bool value) {
+    _online = value;
+    _controller.add(value);
+  }
+
+  @override
+  Future<bool> isOnline() async => _online;
+
+  @override
+  Stream<bool> get onConnectivityChanged => _controller.stream;
 }
 
 /// Imagen PNG transparente de 1x1, usada como respuesta falsa para
@@ -226,6 +251,10 @@ class _FakeVoiceOutputSource implements VoiceOutputSource {
 void main() {
   testWidgets('La app arranca en splash y redirige a Home sin sesión', (WidgetTester tester) async {
     ImagePickerPlatform.instance = _FakeImagePickerPlatform();
+    // shared_preferences (Fase 23) también depende de un canal de
+    // plataforma; esto habilita su respaldo en memoria para los tests.
+    SharedPreferences.setMockInitialValues({});
+    final fakeConnectivity = _FakeConnectivityService();
 
     await HttpOverrides.runZoned(
       () async {
@@ -236,6 +265,7 @@ void main() {
               arCameraSourceProvider.overrideWithValue(_FakeArCameraSource()),
               voiceInputSourceProvider.overrideWithValue(_FakeVoiceInputSource()),
               voiceOutputSourceProvider.overrideWithValue(_FakeVoiceOutputSource()),
+              connectivityServiceProvider.overrideWithValue(fakeConnectivity),
             ],
             child: const FashionStoreApp(),
           ),
@@ -849,6 +879,51 @@ void main() {
         await tester.pump();
         await tester.tap(speakerButtonFinder);
         await tester.pump();
+
+        // Fase 23: almacenamiento local y offline. Se vuelve a Perfil
+        // (dentro del shell con bottom nav) para ver el aviso de
+        // conectividad, que solo vive en MainScaffold, no en rutas de
+        // nivel superior como el asistente.
+        await tester.tap(find.byIcon(Icons.arrow_back).first);
+        await tester.pump();
+
+        expect(find.textContaining('Sin conexión a internet'), findsNothing);
+
+        fakeConnectivity.setOnline(false);
+        await tester.pump();
+
+        expect(
+          find.text('Sin conexión a internet. Mostrando información guardada.'),
+          findsOneWidget,
+        );
+
+        fakeConnectivity.setOnline(true);
+        await tester.pump();
+
+        expect(find.textContaining('Sin conexión a internet'), findsNothing);
+
+        // Los últimos productos consultados ahora se persisten en
+        // almacenamiento local (antes de esta fase solo vivían en
+        // memoria, ver comentario histórico en RecentlyViewedController):
+        // invalidar el provider y volver a leerlo debe restaurar la
+        // misma lista guardada, no perderla.
+        final recentlyViewedBefore = container.read(recentlyViewedControllerProvider);
+        expect(recentlyViewedBefore, isNotEmpty);
+
+        container.invalidate(recentlyViewedControllerProvider);
+        await tester.pump();
+        await tester.pump();
+
+        expect(container.read(recentlyViewedControllerProvider), recentlyViewedBefore);
+
+        // Invalidar recentlyViewedControllerProvider también recalcula
+        // recommendationsProvider (lo observa), que vuelve a combinar
+        // productos, favoritos y pedidos; favoritos a su vez consulta el
+        // catálogo internamente, encadenando varias latencias simuladas
+        // (ver RecommendationMockDataSource y FavoriteMockDataSource).
+        // Se espera generosamente para no dejar timers pendientes al
+        // terminar el test.
+        await tester.pump(const Duration(milliseconds: 2000));
       },
       createHttpClient: (context) => _FakeHttpClient(),
     );

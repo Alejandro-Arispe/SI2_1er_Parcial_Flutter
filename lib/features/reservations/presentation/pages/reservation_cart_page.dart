@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:fashion_store/app/router/route_paths.dart';
+import 'package:fashion_store/core/network/connectivity_service.dart';
 import 'package:fashion_store/core/theme/app_colors.dart';
 import 'package:fashion_store/core/theme/app_spacing.dart';
 import 'package:fashion_store/core/utils/result.dart';
@@ -72,6 +73,19 @@ class _ReservationCartPageState extends ConsumerState<ReservationCartPage> {
     if (_branchError != null || _scheduleError != null) return;
 
     final messenger = ScaffoldMessenger.of(context);
+
+    // La confirmación definitiva de una reserva es una operación crítica
+    // (sección 19 del documento): se revisa la conectividad antes de
+    // intentarla en lugar de esperar a que la llamada falle para avisar.
+    if (!await ref.read(connectivityServiceProvider).isOnline()) {
+      messenger
+        ..removeCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('Sin conexión a internet. Conéctate para confirmar la reserva.')),
+        );
+      return;
+    }
+
     final result = await ref
         .read(reservationCheckoutControllerProvider.notifier)
         .confirm(items);
